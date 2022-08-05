@@ -7,7 +7,7 @@ const { MongoClient, ServerApiVersion, MongoRuntimeError } = require('mongodb');
 const port = process.env.PORT || 5000;
 
 
-//middle war
+//middleware
 app.use(cors())
 app.use(express.json())
 
@@ -15,6 +15,24 @@ const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@clu
 
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
+const chikret = "339630c48427e1f745657c0b92f7a7807386a558e742efb5a4495c83a334274bbe3a41514dc3bd85b58bc9ceb2740e7c139d6d4c90c5e879de18388b4256da9";
+const tokiiiin = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InR1bnR1bkBnbWFpbC5jb20iLCJpYXQiOjE2NTg0MjU1NDAsImV4cCI6MTY1ODQyOTE0MH0.CxQRAbYx9xk84loAbzPcNQN8PyOx8ECHLciKSNlS_u4"
+
+function verifyJWT(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).send({ message: 'unauthorized access' });
+    }
+    const token = authHeader.split(' ')[1];
+    jwt.verify(tokiiiin, chikret, function (err, decoded)
+    {
+        if (err) {
+            return res.status(403).send({message: err})
+        }
+        req.decoded = decoded;
+        next();
+    })
+}
 
 async function run() {
     try {
@@ -62,6 +80,7 @@ async function run() {
         app.put('/user/:email', async (req, res) => {
             const email = req.params.email;
             const user = req.body;
+            // console.log(req.params);
             const filter = { email: email }
             const options = { upsert: true };
             const updateDoc = {
@@ -69,8 +88,9 @@ async function run() {
             };
             const result = await usersCollection.updateOne(filter, updateDoc, options);
             const token = jwt.sign({ email: email }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h'
-})
-            res.send(result,token)
+            })
+            console.log(token);
+            res.send({result,accessToken:token})
         })
 
         
@@ -84,11 +104,27 @@ async function run() {
         * app.patch('/booking/:id') // 
         * app.delete('/booking/:id') // 
         */
-        app.get('/booking', async (req, res) => {
+        app.get('/booking', verifyJWT, async (req, res) => {
+       
+            console.log(req.headers.authorization);
             const patient = req.query.patient;
-            const query = { patient: patient };
-            const bookings = await bookingsCollection.find(query).toArray();
-            res.send(bookings)
+            const authorization = req.headers.authorization;
+            console.log('auth header',authorization );
+          
+            const decodedEmail = req?.decoded?.email;
+            if (patient === decodedEmail) {
+                const query = { patient: patient };
+                const bookings = await bookingsCollection.find(query).toArray();
+                console.log("This is booked", bookings); 
+            
+                res.send({bookings})
+                // return;
+                // return res.send({ message: "message" });
+            }
+            else {
+                return res.status(403).send({message: 'forbidden access'})
+            }
+            
         })
 
         app.post('/booking', async (req, res) => {
