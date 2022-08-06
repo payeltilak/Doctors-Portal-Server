@@ -24,10 +24,10 @@ function verifyJWT(req, res, next) {
         return res.status(401).send({ message: 'unauthorized access' });
     }
     const token = authHeader.split(' ')[1];
-    jwt.verify(tokiiiin, chikret, function (err, decoded)
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded)
     {
         if (err) {
-            return res.status(403).send({message: err})
+            return res.status(403).send({message: 'forbidden access'})
         }
         req.decoded = decoded;
         next();
@@ -77,6 +77,26 @@ async function run() {
 
         })
 
+        app.get('/user',verifyJWT, async (req, res) => {
+            const users = await usersCollection.find().toArray();
+            res.send(users);
+        })  
+        
+        app.put('/user/admin/:email', async (req, res) => {
+            const email = req.params.email;
+            
+            // console.log(req.params);
+            const filter = { email: email }
+            
+            const updateDoc = {
+                $set: {role:'admin'},
+            };
+            const result = await usersCollection.updateOne(filter, updateDoc);
+            
+         
+            res.send(result)
+        })
+
         app.put('/user/:email', async (req, res) => {
             const email = req.params.email;
             const user = req.body;
@@ -93,6 +113,7 @@ async function run() {
             res.send({result,accessToken:token})
         })
 
+      
         
 
         /**
