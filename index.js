@@ -3,8 +3,9 @@ const app = express()
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
-const { MongoClient, ServerApiVersion, MongoRuntimeError } = require('mongodb');
+const { MongoClient, ServerApiVersion, MongoRuntimeError, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 
 //middleware
@@ -40,6 +41,21 @@ async function run() {
         const servicesCollection = client.db('doctors_portal').collection('services')
         const bookingsCollection = client.db('doctors_portal').collection('bookings')
         const usersCollection = client.db('doctors_portal').collection('users')
+        const paymentCollection = client.db('doctors_portal').collection('payments')
+
+
+        // payment api
+        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+            const service = req.body;
+            const price = service.price;
+            const amount = price * 100;
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+            });
+            res.send({ clientSecret: paymentIntent.client_secret })
+        });
 
         app.get('/service', async (req, res) => {
             const query = {};
@@ -81,20 +97,32 @@ async function run() {
             const users = await usersCollection.find().toArray();
             res.send(users);
         })  
-        
-        app.put('/user/admin/:email', async (req, res) => {
+
+        app.get('/admin/:email', async (req, res) => {
             const email = req.params.email;
+            const user = await usersCollection.findOne({ email: email });
+            const isAdmin = user.role === 'admin';
+            res.send({admin: isAdmin})
+        })
+        
+        app.put('/user/admin/:email',verifyJWT, async (req, res) => {
+            const email = req.params.email;
+            const requester = req.decoded.email;
+            // console.log(req);
+            const requesterAccount = await usersCollection.findOne({ email: requester });
+            if (requesterAccount.role === 'admin') {
+                const filter = { email: email }
+                  const updateDoc = {
+                    $set: { role: 'admin' },
+                };
+                const result = await usersCollection.updateOne(filter, updateDoc);
+               res.send(result)  
+            }
+            else {
+                res.status(403).send({message: 'forbidden'})
+            }
+       
             
-            // console.log(req.params);
-            const filter = { email: email }
-            
-            const updateDoc = {
-                $set: {role:'admin'},
-            };
-            const result = await usersCollection.updateOne(filter, updateDoc);
-            
-         
-            res.send(result)
         })
 
         app.put('/user/:email', async (req, res) => {
@@ -159,6 +187,29 @@ async function run() {
             const result = await bookingsCollection.insertOne(booking);
             return res.send({ success: true, result });
         })
+        app.get('/booking/:id', verifyJWT, async (req, res) => {
+            const id = req.params.id
+            const query = { _id: ObjectId(id) }
+            const result = await bookingsCollection.findOne(query)
+            res.send(result)
+        })
+
+        app.patch('/booking/:id', verifyJWT, async (req, res) => {
+            const id = req.params.id
+            const payment = req.body
+            const filter = { _id: ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId,
+
+                }
+            }
+            const result = await paymentCollection.insertOne(payment)
+            const updatedBooking = await bookingsCollection.updateOne(filter, updatedDoc)
+            res.send(updatedDoc)
+        })
+
 
     }
 
